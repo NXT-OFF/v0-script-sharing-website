@@ -1,74 +1,69 @@
 import { cookies } from 'next/headers';
 import { query } from './db';
-import type { User, Session } from '@/types';
+import type { User } from '@/types';
 import crypto from 'crypto';
 
-const SESSION_COOKIE_NAME = 'fivem_hub_session';
+const SESSION_COOKIE_NAME = 'session';
 const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-export async function createSession(userId: string): Promise<string> {
-  const token = generateToken();
-  const expiresAt = new Date(Date.now() + SESSION_DURATION);
-  
-  await query(
-    `INSERT INTO sessions (id, user_id, token, expires_at) VALUES (UUID(), ?, ?, ?)`,
-    [userId, token, expiresAt]
-  );
-  
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    expires: expiresAt,
-    path: '/',
-  });
-  
-  return token;
+interface SessionData {
+  userId: string;
+  exp: number;
 }
 
-export async function getSession(): Promise<Session | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  
-  if (!token) return null;
-  
-  const sessions = await query<Session[]>(
-    `SELECT s.*, u.* FROM sessions s
-     JOIN users u ON s.user_id = u.id
-     WHERE s.token = ? AND s.expires_at > NOW()`,
-    [token]
-  );
-  
-  if (sessions.length === 0) return null;
-  
-  return sessions[0];
+export async function createSession(userId: string): Promise<string> {
+  // This function is now handled directly in the callback
+  // Keeping it for compatibility
+  return userId;
+}
+
+export async function getSessionData(): Promise<SessionData | null> {
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+    
+    if (!sessionCookie) {
+      console.log('[v0] No session cookie found');
+      return null;
+    }
+    
+    const decoded = JSON.parse(Buffer.from(sessionCookie, 'base64').toString('utf-8')) as SessionData;
+    
+    if (decoded.exp < Date.now()) {
+      console.log('[v0] Session expired');
+      return null;
+    }
+    
+    return decoded;
+  } catch (error) {
+    console.error('[v0] Error parsing session:', error);
+    return null;
+  }
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  const session = await getSession();
+  const session = await getSessionData();
   if (!session) return null;
   
-  const users = await query<User[]>(
-    `SELECT * FROM users WHERE id = ?`,
-    [session.user_id]
-  );
-  
-  return users[0] || null;
+  try {
+    const users = await query<User[]>(
+      `SELECT * FROM users WHERE id = ?`,
+      [session.userId]
+    );
+    
+    return users[0] || null;
+  } catch (error) {
+    console.error('[v0] Error fetching user:', error);
+    return null;
+  }
 }
 
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  
-  if (token) {
-    await query(`DELETE FROM sessions WHERE token = ?`, [token]);
-  }
-  
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
 

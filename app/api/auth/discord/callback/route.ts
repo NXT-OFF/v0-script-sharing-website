@@ -54,26 +54,35 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code');
   const error = searchParams.get('error');
 
+  console.log('[v0] Discord callback - code:', code ? 'present' : 'missing', 'error:', error);
+
   if (error) {
+    console.log('[v0] Auth denied by user');
     return NextResponse.redirect(`${SITE_URL}/?error=auth_denied`);
   }
 
   if (!code) {
+    console.log('[v0] No code provided');
     return NextResponse.redirect(`${SITE_URL}/?error=no_code`);
   }
 
   try {
+    console.log('[v0] Exchanging code for token...');
     // Exchange code for token
     const accessToken = await getDiscordToken(code);
+    console.log('[v0] Got access token');
     
     // Get Discord user info
     const discordUser = await getDiscordUser(accessToken);
+    console.log('[v0] Got Discord user:', discordUser.username);
     
     // Check if user exists
+    console.log('[v0] Checking database for user...');
     const existingUsers = await query<User[]>(
       `SELECT * FROM users WHERE discord_id = ?`,
       [discordUser.id]
     );
+    console.log('[v0] Existing users found:', existingUsers.length);
 
     let userId: string;
 
@@ -122,12 +131,23 @@ export async function GET(request: NextRequest) {
     }
 
     // Create session
-    await createSession(userId);
-
-    // Redirect to dashboard
-    return NextResponse.redirect(`${SITE_URL}/dashboard`);
+    console.log('[v0] Creating session for user:', userId);
+    const response = NextResponse.redirect(`${SITE_URL}/dashboard`);
+    
+    // Set session cookie directly on the response
+    const sessionToken = Buffer.from(JSON.stringify({ userId, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 })).toString('base64');
+    response.cookies.set('session', sessionToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+      path: '/',
+    });
+    
+    console.log('[v0] Session cookie set, redirecting to dashboard');
+    return response;
   } catch (err) {
-    console.error('Discord auth error:', err);
+    console.error('[v0] Discord auth error:', err);
     return NextResponse.redirect(`${SITE_URL}/?error=auth_failed`);
   }
 }
