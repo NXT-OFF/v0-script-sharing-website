@@ -47,13 +47,16 @@ export async function getSessionData(): Promise<SessionData | null> {
 
 export async function getCurrentUser(): Promise<User | null> {
   const session = await getSessionData();
+  console.log('[v0] getCurrentUser - session:', session);
   if (!session) return null;
   
   try {
+    console.log('[v0] Fetching user with id:', session.userId);
     const users = await query<User[]>(
       `SELECT * FROM users WHERE id = ?`,
       [session.userId]
     );
+    console.log('[v0] Users found:', users.length, users[0]?.username, users[0]?.role);
     
     return users[0] || null;
   } catch (error) {
