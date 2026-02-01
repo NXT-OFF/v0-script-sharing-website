@@ -3,6 +3,8 @@ import { query } from '@/lib/db';
 import { createSession, discordConfig, generateReferralCode } from '@/lib/auth';
 import type { User } from '@/types';
 
+const SITE_URL = 'https://fivehub.playahosting.fr';
+
 interface DiscordUser {
   id: string;
   username: string;
@@ -53,11 +55,11 @@ export async function GET(request: NextRequest) {
   const error = searchParams.get('error');
 
   if (error) {
-    return NextResponse.redirect(new URL('/?error=auth_denied', request.url));
+    return NextResponse.redirect(`${SITE_URL}/?error=auth_denied`);
   }
 
   if (!code) {
-    return NextResponse.redirect(new URL('/?error=no_code', request.url));
+    return NextResponse.redirect(`${SITE_URL}/?error=no_code`);
   }
 
   try {
@@ -123,9 +125,9 @@ export async function GET(request: NextRequest) {
     await createSession(userId);
 
     // Redirect to dashboard
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return NextResponse.redirect(`${SITE_URL}/dashboard`);
   } catch (err) {
     console.error('Discord auth error:', err);
-    return NextResponse.redirect(new URL('/?error=auth_failed', request.url));
+    return NextResponse.redirect(`${SITE_URL}/?error=auth_failed`);
   }
 }
