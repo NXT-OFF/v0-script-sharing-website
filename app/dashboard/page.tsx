@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Download,
   Heart,
@@ -17,6 +18,7 @@ import {
   ExternalLink,
   Settings,
   MessageSquare,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,141 +30,115 @@ import { toast } from "sonner";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 
-// Mock user data
-const mockUser = {
-  id: "1",
-  username: "DarkRP_Master",
-  email: "darkrp@example.com",
-  avatar: "",
-  role: "user" as const,
-  downloads_today: 7,
-  download_limit: 10,
-  bonus_downloads: 5,
-  total_downloads: 156,
-  total_uploads: 12,
-  referral_code: "DARK2024",
-  referrals_count: 3,
-  created_at: "2024-01-15",
-};
-
-const mockFavorites = [
-  {
-    id: "1",
-    title: "Advanced Police MDT",
-    category: "script",
-    rating: 4.8,
-    downloads: 1234,
-    thumbnail: "",
-    slug: "advanced-police-mdt",
-  },
-  {
-    id: "2",
-    title: "Legion Square Revamp",
-    category: "mapping",
-    rating: 4.5,
-    downloads: 567,
-    thumbnail: "",
-    slug: "legion-square-revamp",
-  },
-  {
-    id: "3",
-    title: "Modern Loading Screen",
-    category: "loading",
-    rating: 4.9,
-    downloads: 890,
-    thumbnail: "",
-    slug: "modern-loading-screen",
-  },
-];
-
-const mockDownloadHistory = [
-  {
-    id: "1",
-    title: "Advanced Police MDT",
-    category: "script",
-    downloaded_at: "2024-03-15 14:30",
-    slug: "advanced-police-mdt",
-  },
-  {
-    id: "2",
-    title: "Animated Loading Screen",
-    category: "loading",
-    downloaded_at: "2024-03-14 09:15",
-    slug: "animated-loading",
-  },
-  {
-    id: "3",
-    title: "Custom HUD Pack",
-    category: "tool",
-    downloaded_at: "2024-03-13 18:45",
-    slug: "custom-hud-pack",
-  },
-];
-
-const mockUploads = [
-  {
-    id: "1",
-    title: "My Custom Script",
-    category: "script",
-    status: "approved",
-    downloads: 45,
-    rating: 4.2,
-    created_at: "2024-03-01",
-    slug: "my-custom-script",
-  },
-  {
-    id: "2",
-    title: "Police Station MLO",
-    category: "mapping",
-    status: "pending",
-    downloads: 0,
-    rating: 0,
-    created_at: "2024-03-14",
-    slug: "police-station-mlo",
-  },
-];
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [copiedCode, setCopiedCode] = useState(false);
 
+  // Fetch current user
+  const { data: userData, error: userError, isLoading: userLoading } = useSWR("/api/auth/me", fetcher);
+  
+  // Fetch user stats
+  const { data: statsData } = useSWR(userData?.user ? "/api/user/stats" : null, fetcher);
+  
+  // Fetch favorites
+  const { data: favoritesData } = useSWR(userData?.user ? "/api/favorites" : null, fetcher);
+  
+  // Fetch download history
+  const { data: downloadsData } = useSWR(userData?.user ? "/api/user/downloads" : null, fetcher);
+  
+  // Fetch user uploads
+  const { data: uploadsData } = useSWR(userData?.user ? "/api/user/uploads" : null, fetcher);
+
+  // Redirect if not logged in
+  if (!userLoading && !userData?.user) {
+    router.push("/api/auth/discord");
+    return null;
+  }
+
+  const user = userData?.user;
+  const stats = statsData || { total_downloads: 0, total_uploads: 0, referrals_count: 0 };
+  const favorites = favoritesData?.favorites || [];
+  const downloadHistory = downloadsData?.downloads || [];
+  const uploads = uploadsData?.uploads || [];
+
   const copyReferralCode = () => {
-    navigator.clipboard.writeText(mockUser.referral_code);
-    setCopiedCode(true);
-    toast.success("Code de parrainage copie!");
-    setTimeout(() => setCopiedCode(false), 2000);
+    if (user?.referral_code) {
+      navigator.clipboard.writeText(user.referral_code);
+      setCopiedCode(true);
+      toast.success("Code de parrainage copie!");
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
   };
 
-  const downloadProgress =
-    ((mockUser.downloads_today) /
-      (mockUser.download_limit + mockUser.bonus_downloads)) *
-    100;
+  const downloadLimit = user?.download_limit || 10;
+  const bonusDownloads = user?.referral_bonus || 0;
+  const downloadsToday = user?.downloads_today || 0;
+  const totalLimit = downloadLimit + bonusDownloads;
+  const downloadProgress = (downloadsToday / totalLimit) * 100;
+
+  // Format date
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date.toLocaleDateString("fr-FR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  };
+
+  // Get Discord avatar URL
+  const getAvatarUrl = (user: any) => {
+    if (!user?.discord_id || !user?.avatar) return null;
+    return `https://cdn.discordapp.com/avatars/${user.discord_id}/${user.avatar}.png?size=128`;
+  };
+
+  // Get role badge
+  const getRoleBadge = (role: string) => {
+    switch (role) {
+      case "admin":
+        return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Admin</Badge>;
+      case "moderator":
+        return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Moderateur</Badge>;
+      default:
+        return <Badge className="bg-primary/20 text-primary border-primary/30">Membre</Badge>;
+    }
+  };
+
+  if (userLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Navbar user={user} />
 
       <main className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="glass rounded-2xl p-6 mb-8">
           <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
             <Avatar className="w-20 h-20 border-2 border-primary">
-              <AvatarImage src={mockUser.avatar || "/placeholder.svg"} />
+              <AvatarImage src={getAvatarUrl(user) || ""} />
               <AvatarFallback className="text-2xl bg-primary/20 text-primary">
-                {mockUser.username.slice(0, 2).toUpperCase()}
+                {user?.username?.slice(0, 2).toUpperCase() || "??"}
               </AvatarFallback>
             </Avatar>
 
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
                 <h1 className="text-2xl font-bold text-foreground">
-                  {mockUser.username}
+                  {user?.username || "Utilisateur"}
                 </h1>
-                <Badge className="bg-primary/20 text-primary border-primary/30">
-                  Membre
-                </Badge>
+                {getRoleBadge(user?.role || "user")}
               </div>
               <p className="text-muted-foreground mb-4">
-                Membre depuis le {mockUser.created_at}
+                Membre depuis le {formatDate(user?.created_at)}
               </p>
 
               {/* Download Limit Progress */}
@@ -172,14 +148,13 @@ export default function DashboardPage() {
                     Telechargements aujourd'hui
                   </span>
                   <span className="text-foreground font-medium">
-                    {mockUser.downloads_today} /{" "}
-                    {mockUser.download_limit + mockUser.bonus_downloads}
+                    {downloadsToday} / {totalLimit}
                   </span>
                 </div>
                 <Progress value={downloadProgress} className="h-2" />
-                {mockUser.bonus_downloads > 0 && (
+                {bonusDownloads > 0 && (
                   <p className="text-xs text-primary mt-1">
-                    +{mockUser.bonus_downloads} telechargements bonus (parrainage)
+                    +{bonusDownloads} telechargements bonus (parrainage)
                   </p>
                 )}
               </div>
@@ -211,7 +186,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">
-                  {mockUser.total_downloads}
+                  {stats.total_downloads}
                 </p>
                 <p className="text-sm text-muted-foreground">Telechargements</p>
               </div>
@@ -225,7 +200,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">
-                  {mockUser.total_uploads}
+                  {stats.total_uploads}
                 </p>
                 <p className="text-sm text-muted-foreground">Uploads</p>
               </div>
@@ -239,7 +214,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">
-                  {mockFavorites.length}
+                  {favorites.length}
                 </p>
                 <p className="text-sm text-muted-foreground">Favoris</p>
               </div>
@@ -253,7 +228,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">
-                  {mockUser.referrals_count}
+                  {stats.referrals_count}
                 </p>
                 <p className="text-sm text-muted-foreground">Parrainages</p>
               </div>
@@ -277,7 +252,7 @@ export default function DashboardPage() {
 
             <div className="flex items-center gap-2">
               <code className="bg-secondary px-4 py-2 rounded-lg font-mono text-lg text-foreground">
-                {mockUser.referral_code}
+                {user?.referral_code || "N/A"}
               </code>
               <Button
                 variant="outline"
@@ -302,14 +277,14 @@ export default function DashboardPage() {
                   Parrainages reussis:
                 </span>
                 <span className="font-medium text-foreground">
-                  {mockUser.referrals_count}
+                  {stats.referrals_count}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <Download className="w-4 h-4 text-primary" />
                 <span className="text-muted-foreground">Bonus gagnes:</span>
                 <span className="font-medium text-foreground">
-                  +{mockUser.referrals_count * 5} telechargements
+                  +{stats.referrals_count * 5} telechargements
                 </span>
               </div>
             </div>
@@ -345,15 +320,23 @@ export default function DashboardPage() {
           {/* Favorites Tab */}
           <TabsContent value="favorites">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {mockFavorites.map((item) => (
+              {favorites.map((item: any) => (
                 <Card
                   key={item.id}
                   className="glass border-border overflow-hidden group"
                 >
                   <div className="aspect-video bg-secondary relative">
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <FileCode className="w-12 h-12 text-muted-foreground" />
-                    </div>
+                    {item.thumbnail ? (
+                      <img 
+                        src={item.thumbnail || "/placeholder.svg"} 
+                        alt={item.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <FileCode className="w-12 h-12 text-muted-foreground" />
+                      </div>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -372,7 +355,7 @@ export default function DashboardPage() {
                       </Badge>
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
-                        <span>{item.rating}</span>
+                        <span>{item.rating || 0}</span>
                       </div>
                     </div>
                     <div className="mt-4">
@@ -393,7 +376,7 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {mockFavorites.length === 0 && (
+            {favorites.length === 0 && (
               <div className="text-center py-12">
                 <Heart className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">
@@ -410,7 +393,7 @@ export default function DashboardPage() {
           <TabsContent value="downloads">
             <div className="glass rounded-xl overflow-hidden">
               <div className="divide-y divide-border">
-                {mockDownloadHistory.map((item) => (
+                {downloadHistory.map((item: any) => (
                   <div
                     key={item.id}
                     className="p-4 flex items-center justify-between hover:bg-secondary/50 transition-colors"
@@ -432,7 +415,7 @@ export default function DashboardPage() {
                           </Badge>
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            {item.downloaded_at}
+                            {formatDate(item.downloaded_at)}
                           </span>
                         </div>
                       </div>
@@ -447,7 +430,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {mockDownloadHistory.length === 0 && (
+            {downloadHistory.length === 0 && (
               <div className="text-center py-12">
                 <Download className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">
@@ -473,7 +456,7 @@ export default function DashboardPage() {
 
             <div className="glass rounded-xl overflow-hidden">
               <div className="divide-y divide-border">
-                {mockUploads.map((item) => (
+                {uploads.map((item: any) => (
                   <div
                     key={item.id}
                     className="p-4 flex items-center justify-between hover:bg-secondary/50 transition-colors"
@@ -510,7 +493,7 @@ export default function DashboardPage() {
                           </Badge>
                           <span className="flex items-center gap-1">
                             <Download className="w-3 h-3" />
-                            {item.downloads}
+                            {item.downloads || 0}
                           </span>
                           {item.rating > 0 && (
                             <span className="flex items-center gap-1">
@@ -531,7 +514,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {mockUploads.length === 0 && (
+            {uploads.length === 0 && (
               <div className="text-center py-12">
                 <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">

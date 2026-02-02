@@ -11,7 +11,8 @@ export async function GET(request: NextRequest) {
     }
 
     const favorites = await query(
-      `SELECT f.*, r.title, r.slug, r.category, r.thumbnail, r.rating, r.downloads_count
+      `SELECT f.*, r.title, r.slug, r.category, r.thumbnail, r.downloads,
+        (SELECT AVG(rating) FROM ratings WHERE resource_id = r.id) as rating
        FROM favorites f
        JOIN resources r ON f.resource_id = r.id
        WHERE f.user_id = ?
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     // Add favorite
     await query(
-      "INSERT INTO favorites (user_id, resource_id, created_at) VALUES (?, ?, NOW())",
+      "INSERT INTO favorites (id, user_id, resource_id, created_at) VALUES (UUID(), ?, ?, NOW())",
       [user.id, resourceId]
     );
 
