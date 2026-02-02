@@ -27,27 +27,26 @@ export async function getSessionData(): Promise<SessionData | null> {
     const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
     
     if (!sessionCookie) {
-      console.log('[v0] No session cookie found');
       return null;
     }
     
     const decoded = JSON.parse(Buffer.from(sessionCookie, 'base64').toString('utf-8')) as SessionData;
     
     if (decoded.exp < Date.now()) {
-      console.log('[v0] Session expired');
       return null;
     }
     
     return decoded;
-  } catch (error) {
-    console.error('[v0] Error parsing session:', error);
+  } catch {
     return null;
   }
 }
 
 export async function getCurrentUser(): Promise<User | null> {
   const session = await getSessionData();
-  if (!session) return null;
+  if (!session) {
+    return null;
+  }
   
   try {
     const users = await query<User[]>(
@@ -56,8 +55,7 @@ export async function getCurrentUser(): Promise<User | null> {
     );
     
     return users[0] || null;
-  } catch (error) {
-    console.error('[v0] Error fetching user:', error);
+  } catch {
     return null;
   }
 }
