@@ -1,5 +1,3 @@
-"use client";
-
 import {
   Trophy,
   Medal,
@@ -16,172 +14,72 @@ import { Card } from "@/components/ui/card";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { formatNumber } from "@/lib/utils";
+import { getCurrentUser } from "@/lib/auth";
+import { query } from "@/lib/db";
 
-const mockTopUploaders = [
-  {
-    rank: 1,
-    username: "DarkRP_Master",
-    avatar: "",
-    uploads: 156,
-    downloads_received: 45678,
-    rating: 4.9,
-  },
-  {
-    rank: 2,
-    username: "ScriptKing",
-    avatar: "",
-    uploads: 134,
-    downloads_received: 38920,
-    rating: 4.8,
-  },
-  {
-    rank: 3,
-    username: "MapperPro",
-    avatar: "",
-    uploads: 98,
-    downloads_received: 29345,
-    rating: 4.7,
-  },
-  {
-    rank: 4,
-    username: "CodeWizard",
-    avatar: "",
-    uploads: 87,
-    downloads_received: 21890,
-    rating: 4.6,
-  },
-  {
-    rank: 5,
-    username: "FiveMDev",
-    avatar: "",
-    uploads: 76,
-    downloads_received: 18456,
-    rating: 4.5,
-  },
-  {
-    rank: 6,
-    username: "MLOCreator",
-    avatar: "",
-    uploads: 65,
-    downloads_received: 15234,
-    rating: 4.4,
-  },
-  {
-    rank: 7,
-    username: "ScriptMaster",
-    avatar: "",
-    uploads: 54,
-    downloads_received: 12890,
-    rating: 4.3,
-  },
-  {
-    rank: 8,
-    username: "UIDesigner",
-    avatar: "",
-    uploads: 43,
-    downloads_received: 9876,
-    rating: 4.2,
-  },
-  {
-    rank: 9,
-    username: "LoadingPro",
-    avatar: "",
-    uploads: 32,
-    downloads_received: 7654,
-    rating: 4.1,
-  },
-  {
-    rank: 10,
-    username: "NewDev",
-    avatar: "",
-    uploads: 21,
-    downloads_received: 5432,
-    rating: 4.0,
-  },
-];
+// Get Discord avatar URL
+const getAvatarUrl = (discord_id: string, avatar: string) => {
+  if (!discord_id || !avatar) return null;
+  return `https://cdn.discordapp.com/avatars/${discord_id}/${avatar}.png?size=128`;
+};
 
-const mockTopDownloaders = [
-  {
-    rank: 1,
-    username: "ServerOwner1",
-    avatar: "",
-    downloads: 2345,
-    favorites: 123,
-  },
-  {
-    rank: 2,
-    username: "RPServer",
-    avatar: "",
-    downloads: 1987,
-    favorites: 98,
-  },
-  {
-    rank: 3,
-    username: "CityLife",
-    avatar: "",
-    downloads: 1654,
-    favorites: 87,
-  },
-  {
-    rank: 4,
-    username: "GrandRP",
-    avatar: "",
-    downloads: 1432,
-    favorites: 76,
-  },
-  {
-    rank: 5,
-    username: "FrenchRP",
-    avatar: "",
-    downloads: 1234,
-    favorites: 65,
-  },
-];
+export default async function LeaderboardPage() {
+  const user = await getCurrentUser();
 
-const mockTopResources = [
-  {
-    rank: 1,
-    title: "Advanced Police MDT",
-    author: "DarkRP_Master",
-    category: "script",
-    downloads: 12345,
-    rating: 4.9,
-  },
-  {
-    rank: 2,
-    title: "Legion Square Revamp",
-    author: "MapperPro",
-    category: "mapping",
-    downloads: 9876,
-    rating: 4.8,
-  },
-  {
-    rank: 3,
-    title: "Modern Loading Screen",
-    author: "UIDesigner",
-    category: "loading",
-    downloads: 8765,
-    rating: 4.9,
-  },
-  {
-    rank: 4,
-    title: "Complete Admin Menu",
-    author: "ScriptKing",
-    category: "tool",
-    downloads: 7654,
-    rating: 4.7,
-  },
-  {
-    rank: 5,
-    title: "ESX Framework Base",
-    author: "CodeWizard",
-    category: "base",
-    downloads: 6543,
-    rating: 4.6,
-  },
-];
+  // Fetch top uploaders
+  let topUploaders: any[] = [];
+  try {
+    topUploaders = await query(
+      `SELECT u.id, u.username, u.discord_id, u.avatar,
+        COUNT(r.id) as uploads,
+        COALESCE(SUM(r.downloads), 0) as downloads_received,
+        COALESCE((SELECT AVG(rt.rating) FROM ratings rt JOIN resources res ON rt.resource_id = res.id WHERE res.author_id = u.id), 0) as rating
+       FROM users u
+       LEFT JOIN resources r ON u.id = r.author_id AND r.status = 'approved'
+       GROUP BY u.id
+       HAVING uploads > 0
+       ORDER BY uploads DESC, downloads_received DESC
+       LIMIT 10`
+    );
+  } catch (error) {
+    console.error('Error fetching top uploaders:', error);
+  }
 
-export default function LeaderboardPage() {
+  // Fetch top resources
+  let topResources: any[] = [];
+  try {
+    topResources = await query(
+      `SELECT r.id, r.title, r.slug, r.category, r.downloads,
+        u.username as author,
+        COALESCE((SELECT AVG(rating) FROM ratings WHERE resource_id = r.id), 0) as rating
+       FROM resources r
+       LEFT JOIN users u ON r.author_id = u.id
+       WHERE r.status = 'approved'
+       ORDER BY r.downloads DESC
+       LIMIT 10`
+    );
+  } catch (error) {
+    console.error('Error fetching top resources:', error);
+  }
+
+  // Fetch top downloaders
+  let topDownloaders: any[] = [];
+  try {
+    topDownloaders = await query(
+      `SELECT u.id, u.username, u.discord_id, u.avatar,
+        COUNT(d.id) as downloads,
+        (SELECT COUNT(*) FROM favorites WHERE user_id = u.id) as favorites
+       FROM users u
+       LEFT JOIN downloads d ON u.id = d.user_id
+       GROUP BY u.id
+       HAVING downloads > 0
+       ORDER BY downloads DESC
+       LIMIT 10`
+    );
+  } catch (error) {
+    console.error('Error fetching top downloaders:', error);
+  }
+
   const getRankIcon = (rank: number) => {
     switch (rank) {
       case 1:
@@ -214,7 +112,7 @@ export default function LeaderboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Navbar user={user} />
 
       <main className="container mx-auto px-4 py-8">
         {/* Header */}
@@ -258,156 +156,157 @@ export default function LeaderboardPage() {
 
           {/* Top Uploaders */}
           <TabsContent value="uploaders">
-            {/* Top 3 Podium */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-              {/* 2nd Place */}
-              <div className="order-2 md:order-1 md:mt-8">
-                <Card
-                  className={`glass border p-6 text-center ${getRankBg(2)}`}
-                >
-                  <Medal className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                  <Avatar className="w-16 h-16 mx-auto mb-3 border-2 border-gray-400">
-                    <AvatarImage src={mockTopUploaders[1].avatar || "/placeholder.svg"} />
-                    <AvatarFallback className="bg-gray-400/20 text-gray-400">
-                      {mockTopUploaders[1].username.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <h3 className="font-bold text-foreground">
-                    {mockTopUploaders[1].username}
-                  </h3>
-                  <div className="mt-3 space-y-1 text-sm">
-                    <p className="text-muted-foreground">
-                      <Upload className="w-4 h-4 inline mr-1" />
-                      {mockTopUploaders[1].uploads} uploads
-                    </p>
-                    <p className="text-muted-foreground">
-                      <Download className="w-4 h-4 inline mr-1" />
-                      {formatNumber(mockTopUploaders[1].downloads_received)}{" "}
-                      DL
-                    </p>
-                  </div>
-                </Card>
-              </div>
+            {topUploaders.length >= 3 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                {/* 2nd Place */}
+                <div className="order-2 md:order-1 md:mt-8">
+                  <Card className={`glass border p-6 text-center ${getRankBg(2)}`}>
+                    <Medal className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                    <Avatar className="w-16 h-16 mx-auto mb-3 border-2 border-gray-400">
+                      <AvatarImage src={getAvatarUrl(topUploaders[1]?.discord_id, topUploaders[1]?.avatar) || "/placeholder.svg"} />
+                      <AvatarFallback className="bg-gray-400/20 text-gray-400">
+                        {topUploaders[1]?.username?.slice(0, 2).toUpperCase() || "??"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <h3 className="font-bold text-foreground">
+                      {topUploaders[1]?.username || "N/A"}
+                    </h3>
+                    <div className="mt-3 space-y-1 text-sm">
+                      <p className="text-muted-foreground">
+                        <Upload className="w-4 h-4 inline mr-1" />
+                        {topUploaders[1]?.uploads || 0} uploads
+                      </p>
+                      <p className="text-muted-foreground">
+                        <Download className="w-4 h-4 inline mr-1" />
+                        {formatNumber(topUploaders[1]?.downloads_received || 0)} DL
+                      </p>
+                    </div>
+                  </Card>
+                </div>
 
-              {/* 1st Place */}
-              <div className="order-1 md:order-2">
-                <Card
-                  className={`glass border p-6 text-center ${getRankBg(1)}`}
-                >
-                  <Crown className="w-12 h-12 text-yellow-400 mx-auto mb-3" />
-                  <Avatar className="w-20 h-20 mx-auto mb-3 border-2 border-yellow-400">
-                    <AvatarImage src={mockTopUploaders[0].avatar || "/placeholder.svg"} />
-                    <AvatarFallback className="bg-yellow-400/20 text-yellow-400">
-                      {mockTopUploaders[0].username.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <h3 className="font-bold text-lg text-foreground">
-                    {mockTopUploaders[0].username}
-                  </h3>
-                  <Badge className="mt-2 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-                    Champion
-                  </Badge>
-                  <div className="mt-3 space-y-1 text-sm">
-                    <p className="text-muted-foreground">
-                      <Upload className="w-4 h-4 inline mr-1" />
-                      {mockTopUploaders[0].uploads} uploads
-                    </p>
-                    <p className="text-muted-foreground">
-                      <Download className="w-4 h-4 inline mr-1" />
-                      {formatNumber(mockTopUploaders[0].downloads_received)}{" "}
-                      DL
-                    </p>
-                    <p className="text-yellow-400">
-                      <Star className="w-4 h-4 inline mr-1 fill-yellow-400" />
-                      {mockTopUploaders[0].rating} / 5
-                    </p>
-                  </div>
-                </Card>
-              </div>
+                {/* 1st Place */}
+                <div className="order-1 md:order-2">
+                  <Card className={`glass border p-6 text-center ${getRankBg(1)}`}>
+                    <Crown className="w-12 h-12 text-yellow-400 mx-auto mb-3" />
+                    <Avatar className="w-20 h-20 mx-auto mb-3 border-2 border-yellow-400">
+                      <AvatarImage src={getAvatarUrl(topUploaders[0]?.discord_id, topUploaders[0]?.avatar) || "/placeholder.svg"} />
+                      <AvatarFallback className="bg-yellow-400/20 text-yellow-400">
+                        {topUploaders[0]?.username?.slice(0, 2).toUpperCase() || "??"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <h3 className="font-bold text-lg text-foreground">
+                      {topUploaders[0]?.username || "N/A"}
+                    </h3>
+                    <Badge className="mt-2 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                      Champion
+                    </Badge>
+                    <div className="mt-3 space-y-1 text-sm">
+                      <p className="text-muted-foreground">
+                        <Upload className="w-4 h-4 inline mr-1" />
+                        {topUploaders[0]?.uploads || 0} uploads
+                      </p>
+                      <p className="text-muted-foreground">
+                        <Download className="w-4 h-4 inline mr-1" />
+                        {formatNumber(topUploaders[0]?.downloads_received || 0)} DL
+                      </p>
+                      <p className="text-yellow-400">
+                        <Star className="w-4 h-4 inline mr-1 fill-yellow-400" />
+                        {Number(topUploaders[0]?.rating || 0).toFixed(1)} / 5
+                      </p>
+                    </div>
+                  </Card>
+                </div>
 
-              {/* 3rd Place */}
-              <div className="order-3 md:mt-12">
-                <Card
-                  className={`glass border p-6 text-center ${getRankBg(3)}`}
-                >
-                  <Medal className="w-10 h-10 text-amber-600 mx-auto mb-3" />
-                  <Avatar className="w-16 h-16 mx-auto mb-3 border-2 border-amber-600">
-                    <AvatarImage src={mockTopUploaders[2].avatar || "/placeholder.svg"} />
-                    <AvatarFallback className="bg-amber-600/20 text-amber-600">
-                      {mockTopUploaders[2].username.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <h3 className="font-bold text-foreground">
-                    {mockTopUploaders[2].username}
-                  </h3>
-                  <div className="mt-3 space-y-1 text-sm">
-                    <p className="text-muted-foreground">
-                      <Upload className="w-4 h-4 inline mr-1" />
-                      {mockTopUploaders[2].uploads} uploads
-                    </p>
-                    <p className="text-muted-foreground">
-                      <Download className="w-4 h-4 inline mr-1" />
-                      {formatNumber(mockTopUploaders[2].downloads_received)}{" "}
-                      DL
-                    </p>
-                  </div>
-                </Card>
+                {/* 3rd Place */}
+                <div className="order-3 md:mt-12">
+                  <Card className={`glass border p-6 text-center ${getRankBg(3)}`}>
+                    <Medal className="w-10 h-10 text-amber-600 mx-auto mb-3" />
+                    <Avatar className="w-16 h-16 mx-auto mb-3 border-2 border-amber-600">
+                      <AvatarImage src={getAvatarUrl(topUploaders[2]?.discord_id, topUploaders[2]?.avatar) || "/placeholder.svg"} />
+                      <AvatarFallback className="bg-amber-600/20 text-amber-600">
+                        {topUploaders[2]?.username?.slice(0, 2).toUpperCase() || "??"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <h3 className="font-bold text-foreground">
+                      {topUploaders[2]?.username || "N/A"}
+                    </h3>
+                    <div className="mt-3 space-y-1 text-sm">
+                      <p className="text-muted-foreground">
+                        <Upload className="w-4 h-4 inline mr-1" />
+                        {topUploaders[2]?.uploads || 0} uploads
+                      </p>
+                      <p className="text-muted-foreground">
+                        <Download className="w-4 h-4 inline mr-1" />
+                        {formatNumber(topUploaders[2]?.downloads_received || 0)} DL
+                      </p>
+                    </div>
+                  </Card>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Rest of the list */}
             <div className="glass rounded-xl overflow-hidden">
               <div className="divide-y divide-border">
-                {mockTopUploaders.slice(3).map((user) => (
+                {topUploaders.slice(3).map((uploader, index) => (
                   <div
-                    key={user.rank}
+                    key={uploader.id}
                     className="p-4 flex items-center gap-4 hover:bg-secondary/50 transition-colors"
                   >
                     <div className="w-8 flex justify-center">
-                      {getRankIcon(user.rank)}
+                      {getRankIcon(index + 4)}
                     </div>
                     <Avatar className="w-10 h-10">
-                      <AvatarImage src={user.avatar || "/placeholder.svg"} />
+                      <AvatarImage src={getAvatarUrl(uploader.discord_id, uploader.avatar) || "/placeholder.svg"} />
                       <AvatarFallback className="bg-primary/20 text-primary">
-                        {user.username.slice(0, 2).toUpperCase()}
+                        {uploader.username?.slice(0, 2).toUpperCase() || "??"}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
                       <p className="font-medium text-foreground">
-                        {user.username}
+                        {uploader.username}
                       </p>
                     </div>
                     <div className="flex items-center gap-6 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Upload className="w-4 h-4" />
-                        {user.uploads}
+                        {uploader.uploads}
                       </span>
                       <span className="flex items-center gap-1">
                         <Download className="w-4 h-4" />
-                        {formatNumber(user.downloads_received)}
+                        {formatNumber(uploader.downloads_received)}
                       </span>
                       <span className="flex items-center gap-1">
                         <Star className="w-4 h-4 text-yellow-400" />
-                        {user.rating}
+                        {Number(uploader.rating || 0).toFixed(1)}
                       </span>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+
+            {topUploaders.length === 0 && (
+              <div className="text-center py-12">
+                <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">
+                  Aucun uploadeur pour le moment
+                </p>
+              </div>
+            )}
           </TabsContent>
 
           {/* Top Resources */}
           <TabsContent value="resources">
             <div className="glass rounded-xl overflow-hidden">
               <div className="divide-y divide-border">
-                {mockTopResources.map((resource) => (
+                {topResources.map((resource, index) => (
                   <div
-                    key={resource.rank}
-                    className={`p-4 flex items-center gap-4 ${resource.rank <= 3 ? getRankBg(resource.rank) : "hover:bg-secondary/50"} transition-colors`}
+                    key={resource.id}
+                    className={`p-4 flex items-center gap-4 ${index < 3 ? getRankBg(index + 1) : "hover:bg-secondary/50"} transition-colors`}
                   >
                     <div className="w-8 flex justify-center">
-                      {getRankIcon(resource.rank)}
+                      {getRankIcon(index + 1)}
                     </div>
                     <div className="flex-1">
                       <p className="font-medium text-foreground">
@@ -427,52 +326,70 @@ export default function LeaderboardPage() {
                       </span>
                       <span className="flex items-center gap-1">
                         <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
-                        {resource.rating}
+                        {Number(resource.rating || 0).toFixed(1)}
                       </span>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+
+            {topResources.length === 0 && (
+              <div className="text-center py-12">
+                <Star className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">
+                  Aucune ressource pour le moment
+                </p>
+              </div>
+            )}
           </TabsContent>
 
           {/* Top Downloaders */}
           <TabsContent value="downloaders">
             <div className="glass rounded-xl overflow-hidden">
               <div className="divide-y divide-border">
-                {mockTopDownloaders.map((user) => (
+                {topDownloaders.map((downloader, index) => (
                   <div
-                    key={user.rank}
-                    className={`p-4 flex items-center gap-4 ${user.rank <= 3 ? getRankBg(user.rank) : "hover:bg-secondary/50"} transition-colors`}
+                    key={downloader.id}
+                    className={`p-4 flex items-center gap-4 ${index < 3 ? getRankBg(index + 1) : "hover:bg-secondary/50"} transition-colors`}
                   >
                     <div className="w-8 flex justify-center">
-                      {getRankIcon(user.rank)}
+                      {getRankIcon(index + 1)}
                     </div>
                     <Avatar className="w-10 h-10">
-                      <AvatarImage src={user.avatar || "/placeholder.svg"} />
+                      <AvatarImage src={getAvatarUrl(downloader.discord_id, downloader.avatar) || "/placeholder.svg"} />
                       <AvatarFallback className="bg-primary/20 text-primary">
-                        {user.username.slice(0, 2).toUpperCase()}
+                        {downloader.username?.slice(0, 2).toUpperCase() || "??"}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
                       <p className="font-medium text-foreground">
-                        {user.username}
+                        {downloader.username}
                       </p>
                     </div>
                     <div className="flex items-center gap-6 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Download className="w-4 h-4" />
-                        {formatNumber(user.downloads)}
+                        {formatNumber(downloader.downloads)}
                       </span>
                       <span className="flex items-center gap-1">
                         <Heart className="w-4 h-4 text-pink-400" />
-                        {user.favorites}
+                        {downloader.favorites}
                       </span>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+
+            {topDownloaders.length === 0 && (
+              <div className="text-center py-12">
+                <Download className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">
+                  Aucun telechargeur pour le moment
+                </p>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </main>

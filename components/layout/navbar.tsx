@@ -48,9 +48,16 @@ const categories = [
   { name: 'Bases', href: '/resources?category=base', icon: Database },
 ];
 
+// Get Discord avatar URL
+const getAvatarUrl = (user: UserType | null) => {
+  if (!user?.discord_id || !user?.avatar) return null;
+  return `https://cdn.discordapp.com/avatars/${user.discord_id}/${user.avatar}.png?size=128`;
+};
+
 export function Navbar({ user }: NavbarProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const avatarUrl = getAvatarUrl(user);
 
   return (
     <header className="sticky top-0 z-50 w-full glass border-b border-border/50">
@@ -138,7 +145,7 @@ export function Navbar({ user }: NavbarProps) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                     <Avatar className="h-10 w-10 border-2 border-primary/50">
-                      <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.username} />
+                      <AvatarImage src={avatarUrl || "/placeholder.svg"} alt={user.username} />
                       <AvatarFallback className="bg-primary/20 text-primary">
                         {user.username.slice(0, 2).toUpperCase()}
                       </AvatarFallback>
@@ -148,7 +155,7 @@ export function Navbar({ user }: NavbarProps) {
                 <DropdownMenuContent align="end" className="w-56 glass">
                   <div className="flex items-center gap-2 p-2">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.username} />
+                      <AvatarImage src={avatarUrl || "/placeholder.svg"} alt={user.username} />
                       <AvatarFallback>{user.username.slice(0, 2).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col">
